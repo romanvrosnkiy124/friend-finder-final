@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { User, Interest } from '../types';
-import { X, Camera, Save, Loader2 } from 'lucide-react';
+import { X, Camera, Save, Loader2, MapPin } from 'lucide-react';
 import { Button } from './Button';
-import { supabase } from '../supabaseClient'; // Импортируем Supabase
+import { supabase } from '../supabaseClient';
+import { CityAutocomplete } from './CityAutocomplete'; // Импортируем выбор города
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -14,9 +15,9 @@ interface EditProfileModalProps {
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, currentUser, onUpdate }) => {
   const [formData, setFormData] = useState<User>(currentUser);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCityValid, setIsCityValid] = useState(true); // Для валидации города
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Обновляем форму при открытии
   React.useEffect(() => {
     setFormData(currentUser);
   }, [currentUser, isOpen]);
@@ -32,7 +33,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     }
   };
 
-  // --- ЗАГРУЗКА ФОТО В SUPABASE ---
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -43,17 +43,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         const fileName = `${Math.random()}.${fileExt}`;
         const filePath = `${fileName}`;
 
-        // 1. Загружаем
         const { error: uploadError } = await supabase.storage
             .from('avatars')
             .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
-        // 2. Получаем ссылку
         const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-        
-        // 3. Обновляем локальное состояние
         setFormData(prev => ({ ...prev, photoUrl: data.publicUrl }));
 
     } catch (error: any) {
@@ -63,11 +59,21 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     }
   };
 
-  // --- СОХРАНЕНИЕ ДАННЫХ В БАЗУ ---
+  // Логика смены города
+  const handleCityChange = (cityName: string, lat?: number, lng?: number) => {
+    const updates: Partial<User> = { city: cityName };
+    if (lat && lng) { 
+        updates.location = { lat, lng }; 
+        setIsCityValid(true); 
+    } else { 
+        setIsCityValid(false); 
+    }
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
-        // 1. Обновляем таблицу profiles
         const { error } = await supabase
             .from('profiles')
             .update({
@@ -75,13 +81,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 bio: formData.bio,
                 interests: formData.interests.join(','),
                 avatar_url: formData.photoUrl,
-                // city: formData.city, // Если нужно обновлять город
+                city: formData.city, // <--- ТЕПЕРЬ СОХРАНЯЕМ ГОРОД
             })
             .eq('id', currentUser.id);
 
         if (error) throw error;
 
-        // 2. Обновляем приложение
         onUpdate(formData);
         onClose();
         
@@ -116,13 +121,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
               <div className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full border-4 border-white shadow-lg hover:bg-indigo-700 transition-colors">
                 {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
               </div>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept="image/*"
-                onChange={handleFileChange}
-              />
+              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
             </div>
           </div>
 
@@ -135,6 +134,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 onChange={e => setFormData({...formData, name: e.target.value})}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500"
               />
+            </div>
+
+            {/* ВЕРНУЛИ ПОЛЕ ГОРОД */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Город</label>
+              <div className="relative">
+                  <CityAutocomplete 
+                     value={formData.city || ''}
+                     onChange={handleCityChange}
+                     placeholder="Выберите город"
+                     isValid={isCityValid}
+                  />
+                  <div className="absolute right-3 top-3 text-gray-400 pointer-events-none">
+                      <MapPin size={18} />
+                  </div>
+              </div>
             </div>
 
             <div>

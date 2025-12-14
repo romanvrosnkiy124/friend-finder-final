@@ -124,7 +124,7 @@ const App: React.FC = () => {
           age: data.age || 18,
           gender: 'male',
           photoUrl: data.avatar_url || '', 
-          bio: '', 
+          bio: data.bio || '',
           interests: data.interests ? data.interests.split(',') : [],
           location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
         });
