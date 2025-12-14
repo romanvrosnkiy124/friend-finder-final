@@ -74,6 +74,20 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
   const handleSave = async () => {
     setIsLoading(true);
     try {
+        // Если пользователь выбрал город, нам нужно убедиться, что у нас есть его координаты
+        let lat = formData.location?.lat;
+        let lng = formData.location?.lng;
+
+        // Если координаты пустые, но город введен текстом -> пробуем найти координаты через интернет
+        if ((!lat || !lng) && formData.city) {
+             const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${formData.city}&accept-language=ru`);
+             const data = await response.json();
+             if (data && data.length > 0) {
+                 lat = parseFloat(data[0].lat);
+                 lng = parseFloat(data[0].lon);
+             }
+        }
+
         const { error } = await supabase
             .from('profiles')
             .update({
@@ -81,13 +95,21 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 bio: formData.bio,
                 interests: formData.interests.join(','),
                 avatar_url: formData.photoUrl,
-                city: formData.city, // <--- ТЕПЕРЬ СОХРАНЯЕМ ГОРОД
+                city: formData.city,
+                // ВАЖНО: Добавляем сохранение координат!
+                latitude: lat,
+                longitude: lng
             })
             .eq('id', currentUser.id);
 
         if (error) throw error;
 
-        onUpdate(formData);
+        // Обновляем локальное состояние с новыми координатами
+        onUpdate({ 
+            ...formData, 
+            location: (lat && lng) ? { lat, lng } : formData.location 
+        });
+        
         onClose();
         
     } catch (error: any) {
@@ -96,7 +118,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     } finally {
         setIsLoading(false);
     }
-  };
+  }; 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
