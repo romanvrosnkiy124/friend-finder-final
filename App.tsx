@@ -109,6 +109,7 @@ const App: React.FC = () => {
   // 2. ФУНКЦИИ (LOGIC)
   // ==========================================
 
+ // --- Функция загрузки анкеты из базы ---
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -124,11 +125,15 @@ const App: React.FC = () => {
           age: data.age || 18,
           gender: 'male',
           photoUrl: data.avatar_url || '', 
-          bio: data.bio || '',
+          bio: data.bio || '', 
+          city: data.city || '', // <--- ИСПРАВЛЕНИЕ 1: Теперь мы читаем город из базы
           interests: data.interests ? data.interests.split(',') : [],
           location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
         });
-        setView('swipe');
+        
+        // ИСПРАВЛЕНИЕ 2: Меняем стартовый экран на КАРТУ
+        setView('map'); 
+        
         updateUserLocation();
       }
     } catch (error) {
