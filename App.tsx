@@ -27,7 +27,8 @@ import {
   RefreshCw,
   MapPin,
   Globe,
-  Send
+  Send,
+  Loader2
 } from 'lucide-react';
 
 import { UserCard } from './components/UserCard';
@@ -47,7 +48,7 @@ import { supabase } from './supabaseClient';
 
 // Helper to calculate distance in km
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Radius of the earth in km
+  const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);
   const a =
@@ -68,6 +69,7 @@ const App: React.FC = () => {
   // 1. СОСТОЯНИЯ (STATE)
   // ==========================================
   const [view, setView] = useState<AppView>('register');
+  const [isLoading, setIsLoading] = useState(true);
   
   const [currentUser, setCurrentUser] = useState<User>({
     id: 'me',
@@ -84,7 +86,7 @@ const App: React.FC = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(MOCK_CHATS_INITIAL);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
-  const [incomingLikes, setIncomingLikes] = useState<string[]>([]);
+  const [incomingLikes, setIncomingLikes] = useState<string[]>([]); // Пустой массив (нет фейковых лайков)
   
   const [filters, setFilters] = useState<FilterState>({
     ageRange: [18, 99],
@@ -107,7 +109,6 @@ const App: React.FC = () => {
   // 2. ФУНКЦИИ (LOGIC)
   // ==========================================
 
-  // --- Функция загрузки анкеты из базы ---
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -132,10 +133,11 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('Ошибка загрузки профиля:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // --- Функция обновления GPS ---
   const updateUserLocation = () => {
     if (!navigator.geolocation) return;
 
@@ -158,7 +160,6 @@ const App: React.FC = () => {
     });
   };
 
-  // --- Функция загрузки реальных людей ---
   const fetchRealUsers = async () => {
     try {
       const { data, error } = await supabase
@@ -198,15 +199,20 @@ const App: React.FC = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         fetchUserProfile(session.user.id);
+      } else {
+        setIsLoading(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        fetchUserProfile(session.user.id);
+        if (currentUser.id === 'me') { 
+             fetchUserProfile(session.user.id);
+        }
       } else {
         setView('register');
         setCurrentUser(prev => ({ ...prev, id: 'me' }));
+        setIsLoading(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -219,13 +225,11 @@ const App: React.FC = () => {
     }
   }, [currentUser.id]); 
 
-  // --- Эффект 3: ЧАТ (Загрузка истории и Realtime) ---
+  // --- Эффект 3: ЧАТ ---
   useEffect(() => {
     if (currentUser.id === 'me') return;
 
-    // А. Загружаем историю сообщений при старте
     const loadChatHistory = async () => {
-      // Ищем все сообщения, где я отправитель или получатель
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -233,11 +237,9 @@ const App: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (data) {
-        // Группируем сообщения по собеседникам
         const newSessions: ChatSession[] = [];
         
         data.forEach(msg => {
-          // Определяем, кто собеседник (если отправил я -> собеседник receiver, иначе sender)
           const partnerId = msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id;
           
           let session = newSessions.find(s => s.id === partnerId);
@@ -255,10 +257,8 @@ const App: React.FC = () => {
           });
         });
         
-        // Объединяем с текущими сессиями (сохраняя моки если надо)
         if (newSessions.length > 0) {
             setChatSessions(prev => {
-                // Оставляем моки, добавляем реальные
                 const combined = [...prev.filter(s => !newSessions.find(ns => ns.id === s.id)), ...newSessions];
                 return combined;
             });
@@ -268,14 +268,17 @@ const App: React.FC = () => {
     
     loadChatHistory();
 
-    // Б. Подписываемся на НОВЫЕ сообщения (Realtime)
     const channel = supabase
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
          const newMsg = payload.new;
-         // Обрабатываем только если это касается меня
-         if (newMsg.receiver_id === currentUser.id || newMsg.sender_id === currentUser.id) {
-            const partnerId = newMsg.sender_id === currentUser.id ? newMsg.receiver_id : newMsg.sender_id;
+         
+         // 1. ИГНОРИРУЕМ СВОИ ЖЕ СООБЩЕНИЯ (ЧТОБЫ НЕ БЫЛО ДУБЛЕЙ)
+         if (newMsg.sender_id === currentUser.id) return;
+
+         // 2. ОБРАБАТЫВАЕМ ТОЛЬКО ВХОДЯЩИЕ
+         if (newMsg.receiver_id === currentUser.id) {
+            const partnerId = newMsg.sender_id;
             
             const messageObj = {
                 id: newMsg.id.toString(),
@@ -288,21 +291,21 @@ const App: React.FC = () => {
             setChatSessions(prev => {
                 const existing = prev.find(s => s.id === partnerId);
                 if (existing) {
-                    // Проверяем дубликаты (чтобы не добавить дважды то, что я сам отправил)
-                    if (existing.messages.some(m => m.timestamp === messageObj.timestamp && m.text === messageObj.text)) {
+                    // Проверка на дубликаты (на всякий случай)
+                    if (existing.messages.some(m => m.timestamp === messageObj.timestamp)) {
                         return prev;
                     }
                     return prev.map(s => s.id === partnerId ? {
                         ...s,
                         messages: [...s.messages, messageObj],
-                        unread: (newMsg.sender_id !== currentUser.id && activeSessionId !== partnerId) ? s.unread + 1 : s.unread
+                        unread: (activeSessionId !== partnerId) ? s.unread + 1 : s.unread
                     } : s);
                 } else {
                     return [{
                         id: partnerId,
                         type: 'direct',
                         messages: [messageObj],
-                        unread: newMsg.sender_id !== currentUser.id ? 1 : 0
+                        unread: 1
                     }, ...prev];
                 }
             });
@@ -347,7 +350,6 @@ const App: React.FC = () => {
     setSwipedUserIds(prev => new Set(prev).add(targetUser.id));
     const commonInterests = currentUser.interests.filter(i => targetUser.interests.includes(i));
     
-    // ЛОГИКА: 1 ИНТЕРЕС
     if (commonInterests.length >= 1) {
         const existing = chatSessions.find(s => s.id === targetUser.id);
         if (!existing) {
@@ -385,11 +387,9 @@ const App: React.FC = () => {
       setSwipedUserIds(prev => new Set(prev).add(userId));
   };
 
-  // --- ОТПРАВКА СООБЩЕНИЙ В БАЗУ ДАННЫХ ---
   const handleSendMessage = async (text: string) => {
     if (!activeSessionId) return;
 
-    // 1. Оптимистичное обновление (сразу показываем у себя)
     const optimisticMessage = {
       id: Date.now().toString(),
       senderId: currentUser.id,
@@ -408,7 +408,6 @@ const App: React.FC = () => {
       return session;
     }));
 
-    // 2. Отправка в Supabase
     try {
       const { error } = await supabase
         .from('messages')
@@ -424,33 +423,6 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error(err);
-    }
-
-    // AI Логика (для ботов)
-    const receiver = users.find(u => u.id === activeSessionId);
-    if (receiver?.isCelebrity) {
-        setTypingChatId(activeSessionId);
-        const currentSession = chatSessions.find(s => s.id === activeSessionId);
-        const history = [...(currentSession?.messages || []), optimisticMessage];
-
-        setTimeout(async () => {
-            const replyText = await generateCelebrityReply(currentUser, receiver, history);
-            const replyMessage = {
-                id: (Date.now() + 1).toString(),
-                senderId: receiver.id,
-                receiverId: currentUser.id,
-                text: replyText,
-                timestamp: Date.now(),
-                isAiGenerated: true
-            };
-            setChatSessions(prev => prev.map(session => {
-                if (session.id === activeSessionId) {
-                    return { ...session, messages: [...session.messages, replyMessage] };
-                }
-                return session;
-            }));
-            setTypingChatId(null);
-        }, 1500);
     }
   };
 
@@ -485,7 +457,6 @@ const App: React.FC = () => {
   };
 
   const handleJoinEvent = (eventId: string) => {
-    // Упрощенная логика событий (пока локально)
     const targetEvent = events.find(e => e.id === eventId);
     if (!targetEvent) return;
     const isAlreadyJoined = targetEvent.participantsIds.includes(currentUser.id);
@@ -557,6 +528,17 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
+  if (isLoading) {
+    return (
+      <div className="max-w-md mx-auto h-[100dvh] bg-white flex flex-col items-center justify-center">
+         <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-indigo-600 to-pink-500 rounded-3xl shadow-xl mb-6 animate-pulse">
+            <Heart className="text-white fill-white" size={40} />
+         </div>
+         <Loader2 className="animate-spin text-indigo-600" size={32} />
+      </div>
+    );
+  }
+
   if (view === 'register') {
     return (
       <RegistrationForm 
