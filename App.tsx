@@ -82,8 +82,8 @@ const App: React.FC = () => {
     location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG },
   });
 
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>(MOCK_CHATS_INITIAL);
+  const [users, setUsers] = useState<User[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
   const [incomingLikes, setIncomingLikes] = useState<string[]>([]); // Пустой массив (нет фейковых лайков)
