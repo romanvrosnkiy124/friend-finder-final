@@ -720,7 +720,13 @@ const App: React.FC = () => {
         )}
 
         {view === 'chat' && !activeSessionId && (
-          <ChatList sessions={chatSessions} users={users} events={events} onSelectChat={setActiveSessionId} />
+          <ChatList 
+            sessions={chatSessions} 
+            users={users} 
+            events={events}
+            onSelectChat={setActiveSessionId}
+            onlineUsers={onlineUsers} 
+          />
         )}
 
         {view === 'chat' && activeSessionId && (
