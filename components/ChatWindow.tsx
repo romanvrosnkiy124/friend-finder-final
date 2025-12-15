@@ -8,9 +8,10 @@ interface ChatWindowProps {
   partner?: User;
   event?: Event;
   isTyping?: boolean;
-  isOnline?: boolean; // <--- НОВОЕ: Статус онлайн
+  isOnline?: boolean;
   onBack: () => void;
   onSendMessage: (text: string) => void;
+  onProfileClick?: () => void; // <--- НОВОЕ: Функция клика по профилю
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({ 
@@ -19,9 +20,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   partner, 
   event, 
   isTyping, 
-  isOnline, // Принимаем статус
+  isOnline,
   onBack, 
-  onSendMessage 
+  onSendMessage,
+  onProfileClick // Получаем функцию
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -50,11 +52,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   if (!session) return null;
 
-  // Определяем заголовок и аватар
   const title = partner ? partner.name : (event ? event.title : 'Чат');
   const photoUrl = partner ? partner.photoUrl : '';
   
-  // Статус под именем
   let statusText = '';
   if (partner) {
       statusText = isOnline ? 'В сети' : 'Не в сети';
@@ -67,31 +67,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       
       {/* Header */}
       <div className="h-16 px-4 border-b flex items-center justify-between shrink-0 bg-white z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full">
+        <div className="flex items-center gap-1">
+          <button onClick={onBack} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full mr-1">
             <ArrowLeft size={24} />
           </button>
           
-          <div className="relative">
-            {partner ? (
-              <img src={photoUrl} className="w-10 h-10 rounded-full object-cover bg-gray-200" alt={title} />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                <Calendar size={20} />
-              </div>
-            )}
-            
-            {/* Зеленая точка на аватаре (только для личных чатов) */}
-            {partner && isOnline && (
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-            )}
-          </div>
+          {/* Кликабельная область профиля */}
+          <div 
+            onClick={() => partner && onProfileClick && onProfileClick()} 
+            className={`flex items-center gap-3 py-1 px-2 rounded-lg transition-colors ${partner ? 'cursor-pointer hover:bg-gray-50 active:bg-gray-100' : ''}`}
+          >
+            <div className="relative">
+                {partner ? (
+                <img src={photoUrl} className="w-10 h-10 rounded-full object-cover bg-gray-200" alt={title} />
+                ) : (
+                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <Calendar size={20} />
+                </div>
+                )}
+                
+                {partner && isOnline && (
+                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                )}
+            </div>
 
-          <div className="flex flex-col">
-            <h3 className="font-bold text-gray-900 leading-none">{title}</h3>
-            <span className={`text-xs mt-1 ${isOnline ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
-                {statusText}
-            </span>
+            <div className="flex flex-col">
+                <h3 className="font-bold text-gray-900 leading-none">{title}</h3>
+                <span className={`text-xs mt-1 ${isOnline ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                    {statusText}
+                </span>
+            </div>
           </div>
         </div>
         
@@ -102,7 +107,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 bg-[#f0f2f5] space-y-3">
-        {/* Info Banner for Events */}
         {event && (
             <div className="bg-white p-3 rounded-xl shadow-sm mb-4 border border-indigo-100 flex items-start gap-3">
                 <Info className="text-indigo-500 shrink-0 mt-0.5" size={20} />
