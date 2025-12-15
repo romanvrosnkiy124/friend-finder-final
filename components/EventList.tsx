@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Event, User } from '../types';
-import { EventCard } from './EventCard';
+import { Calendar, MapPin, Users, MessageCircle, Plus } from 'lucide-react';
 import { Button } from './Button';
-import { Calendar, Plus } from 'lucide-react';
 
 interface EventListProps {
   events: Event[];
@@ -15,101 +14,92 @@ interface EventListProps {
 export const EventList: React.FC<EventListProps> = ({ 
   events, 
   users, 
-  currentUser, 
+  currentUser,
   onJoinEvent, 
   onCreateEventClick 
 }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
-
-  // Sort events by date
-  const sortedEvents = [...events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  
-  // Filter my events
-  const myEvents = sortedEvents.filter(e => e.organizerId === currentUser.id);
-  const hasMyEvents = myEvents.length > 0;
-
-  // Determine events to show
-  const displayedEvents = activeTab === 'my' ? myEvents : sortedEvents;
-
   return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <div className="bg-white border-b border-gray-100">
-        <div className="flex items-center justify-between px-4 py-4">
-           <div>
-              <h2 className="text-xl font-bold text-gray-900">События рядом</h2>
-              <p className="text-xs text-gray-500">Найдите компанию по интересам</p>
-           </div>
-           <Button size="sm" onClick={onCreateEventClick} className="flex items-center gap-1">
-              <Plus size={18} />
-              <span className="hidden sm:inline">Создать</span>
-           </Button>
-        </div>
-
-        {/* Tabs - only visible if user has created events */}
-        {hasMyEvents && (
-          <div className="flex px-4 gap-6">
-            <button 
-              onClick={() => setActiveTab('all')}
-              className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'all' 
-                  ? 'border-indigo-600 text-indigo-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Все события
-            </button>
-            <button 
-              onClick={() => setActiveTab('my')}
-              className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-                activeTab === 'my' 
-                  ? 'border-indigo-600 text-indigo-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Мои события
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === 'my' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
-                {myEvents.length}
-              </span>
-            </button>
-          </div>
-        )}
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* Header */}
+      <div className="p-4 bg-white shadow-sm shrink-0 flex justify-between items-center z-10">
+        <h2 className="text-xl font-bold text-gray-800">События рядом</h2>
+        <button 
+          onClick={onCreateEventClick}
+          className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 shadow-md transition-all active:scale-95"
+        >
+          <Plus size={24} />
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {displayedEvents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <Calendar size={48} className="mb-4 opacity-20" />
-            <p>Событий пока нет.</p>
-            {activeTab === 'my' ? (
-                <p className="text-sm mt-1 mb-4">Вы пока не создали ни одного события.</p>
-            ) : (
-                <p className="text-sm mt-1 mb-4">Станьте первым организатором!</p>
-            )}
-            
-            <Button variant="outline" onClick={onCreateEventClick}>
-              Создать событие
-            </Button>
-          </div>
+      {/* List */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {events.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <Calendar size={48} className="mb-4 opacity-50" />
+                <p>Пока нет событий</p>
+                <p className="text-sm">Создайте первое!</p>
+            </div>
         ) : (
-          displayedEvents.map(event => (
-            <EventCard 
-              key={event.id} 
-              event={event} 
-              currentUser={currentUser}
-              organizer={users.find(u => u.id === event.organizerId)}
-              onJoin={onJoinEvent}
-            />
-          ))
-        )}
-        
-        {/* Floating Action Button for mobile if list is long */}
-        {displayedEvents.length > 0 && (
-           <button 
-             onClick={onCreateEventClick}
-             className="sm:hidden fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-indigo-700 transition-transform active:scale-95 z-30"
-           >
-             <Plus size={28} />
-           </button>
+            events.map(event => {
+              const isParticipant = event.participantsIds.includes(currentUser.id);
+              const organizer = users.find(u => u.id === event.organizerId);
+              
+              return (
+                <div key={event.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                        <h3 className="font-bold text-lg text-gray-800 leading-tight mb-1">{event.title}</h3>
+                        <div className="flex items-center text-xs text-gray-500">
+                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-medium">
+                                {organizer ? organizer.name : 'Автор неизвестен'}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="text-center bg-gray-50 px-3 py-1 rounded-lg min-w-[3.5rem]">
+                        <span className="block text-xs text-gray-400 uppercase font-bold">{new Date(event.date).toLocaleString('ru', { month: 'short' })}</span>
+                        <span className="block text-xl font-bold text-indigo-600">{new Date(event.date).getDate()}</span>
+                    </div>
+                  </div>
+                  
+                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{event.description}</p>
+                  
+                  <div className="flex flex-col gap-2 mb-4">
+                      <div className="flex items-center text-gray-500 text-sm">
+                        <MapPin size={16} className="mr-2 text-indigo-400" />
+                        {event.locationName}
+                      </div>
+                      <div className="flex items-center text-gray-500 text-sm">
+                        <Users size={16} className="mr-2 text-indigo-400" />
+                        {event.participantsIds.length} участников
+                      </div>
+                  </div>
+
+                  {event.tags && event.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {event.tags.map(tag => (
+                        <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <Button 
+                    fullWidth 
+                    variant={isParticipant ? "secondary" : "primary"}
+                    onClick={() => onJoinEvent(event.id)}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    {isParticipant ? (
+                        <>
+                            <MessageCircle size={18} />
+                            Открыть чат
+                        </>
+                    ) : (
+                        "Присоединиться"
+                    )}
+                  </Button>
+                </div>
+              );
+            })
         )}
       </div>
     </div>
