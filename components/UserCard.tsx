@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { User } from '../types';
 import { MapPin, Info } from 'lucide-react';
@@ -7,12 +6,22 @@ interface UserCardProps {
   user: User;
   currentUser?: User;
   distance: number | null;
+  isOnline?: boolean; // <--- НОВОЕ: Принимаем статус онлайн
   onInfoClick?: () => void;
 }
 
-export const UserCard: React.FC<UserCardProps> = ({ user, currentUser, distance, onInfoClick }) => {
+export const UserCard: React.FC<UserCardProps> = ({ user, currentUser, distance, isOnline, onInfoClick }) => {
   return (
     <div className="relative w-full h-full rounded-3xl overflow-hidden bg-white shadow-xl border border-gray-200">
+      
+      {/* ИНДИКАТОР ОНЛАЙН (Показываем только если true) */}
+      {isOnline && (
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/20 shadow-lg">
+          <div className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(74,222,128,0.6)]"></div>
+          <span className="text-white text-xs font-bold tracking-wide">Онлайн</span>
+        </div>
+      )}
+
       {/* Image */}
       <img 
         src={user.photoUrl} 
