@@ -731,7 +731,24 @@ const App: React.FC = () => {
 
         {view === 'chat' && activeSessionId && (
           <div className="absolute inset-0 z-30 bg-white">
-            <ChatWindow currentUser={currentUser} session={activeSession} partner={activePartner} event={activeEvent} isTyping={typingChatId === activeSessionId} isOnline={activePartner ? onlineUsers.has(activePartner.id) : false} onBack={() => setActiveSessionId(null)} onSendMessage={handleSendMessage} />
+            {/* VIEW: ACTIVE CHAT */}
+        {view === 'chat' && activeSessionId && (
+          <div className="absolute inset-0 z-30 bg-white">
+            <ChatWindow 
+              currentUser={currentUser}
+              session={activeSession}
+              partner={activePartner}
+              event={activeEvent}
+              isTyping={typingChatId === activeSessionId}
+              isOnline={activePartner ? onlineUsers.has(activePartner.id) : false}
+              onBack={() => setActiveSessionId(null)}
+              onSendMessage={handleSendMessage}
+              
+              // ---> ДОБАВЛЕНА ЭТА СТРОЧКА:
+              onProfileClick={() => activePartner && openProfile(activePartner)}
+            />
+          </div>
+        )}
           </div>
         )}
 
