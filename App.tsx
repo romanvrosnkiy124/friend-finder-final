@@ -46,6 +46,7 @@ import { LikesList } from './components/LikesList';
 import { generateCelebrityReply } from './services/geminiService';
 import { supabase } from './supabaseClient';
 
+// Helper to calculate distance in km
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -70,9 +71,6 @@ const App: React.FC = () => {
   const [view, setView] = useState<AppView>('register');
   const [isLoading, setIsLoading] = useState(true);
   
-  // НОВОЕ: Список ID пользователей, которые сейчас онлайн
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-
   const [currentUser, setCurrentUser] = useState<User>({
     id: 'me',
     name: '',
@@ -84,11 +82,11 @@ const App: React.FC = () => {
     location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG },
   });
 
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>(MOCK_CHATS_INITIAL);
+  const [users, setUsers] = useState<User[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
-  const [incomingLikes, setIncomingLikes] = useState<string[]>([]);
+  const [incomingLikes, setIncomingLikes] = useState<string[]>([]); // Пустой массив (нет фейковых лайков)
   
   const [filters, setFilters] = useState<FilterState>({
     ageRange: [18, 99],
@@ -111,6 +109,7 @@ const App: React.FC = () => {
   // 2. ФУНКЦИИ (LOGIC)
   // ==========================================
 
+ // --- Функция загрузки анкеты из базы ---
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -127,15 +126,15 @@ const App: React.FC = () => {
           gender: 'male',
           photoUrl: data.avatar_url || '', 
           bio: data.bio || '', 
-          city: data.city || '', 
+          city: data.city || '', // <--- ИСПРАВЛЕНИЕ 1: Теперь мы читаем город из базы
           interests: data.interests ? data.interests.split(',') : [],
-          location: (data.latitude && data.longitude) 
-            ? { lat: data.latitude, lng: data.longitude } 
-            : { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
+          location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
         });
-        setView('map');
+        
+        // ИСПРАВЛЕНИЕ 2: Меняем стартовый экран на КАРТУ
+        setView('map'); 
+        
         updateUserLocation();
-        fetchEvents();
       }
     } catch (error) {
       console.error('Ошибка загрузки профиля:', error);
@@ -196,68 +195,9 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchEvents = async () => {
-    try {
-      const { data, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
-      
-      if (data) {
-        const loadedEvents: Event[] = data.map(e => ({
-          id: e.id.toString(),
-          title: e.title,
-          description: e.description,
-          date: e.date,
-          locationName: e.location_name,
-          organizerId: e.organizer_id,
-          participantsIds: e.participants_ids || [],
-          tags: e.tags ? e.tags.split(',') : []
-        }));
-        setEvents(loadedEvents);
-      }
-    } catch (error) {
-      console.error("Ошибка загрузки событий:", error);
-    }
-  };
-
   // ==========================================
   // 3. ЭФФЕКТЫ (EFFECTS)
   // ==========================================
-
-  // --- НОВОЕ: ОТСЛЕЖИВАНИЕ ОНЛАЙН СТАТУСА (PRESENCE) ---
-  useEffect(() => {
-    if (currentUser.id === 'me') return;
-
-    // Создаем канал для отслеживания статуса
-    const presenceChannel = supabase.channel('online_users', {
-      config: {
-        presence: {
-          key: currentUser.id,
-        },
-      },
-    });
-
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        // Получаем список всех, кто онлайн
-        const newState = presenceChannel.presenceState();
-        const onlineIds = new Set(Object.keys(newState));
-        setOnlineUsers(onlineIds);
-        console.log('Пользователи онлайн:', onlineIds);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          // Говорим всем: "Я онлайн!"
-          await presenceChannel.track({
-            online_at: new Date().toISOString(),
-            user_id: currentUser.id,
-          });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(presenceChannel);
-    };
-  }, [currentUser.id]);
-
 
   // --- Эффект 1: Проверка входа ---
   useEffect(() => {
@@ -338,8 +278,10 @@ const App: React.FC = () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
          const newMsg = payload.new;
          
+         // 1. ИГНОРИРУЕМ СВОИ ЖЕ СООБЩЕНИЯ (ЧТОБЫ НЕ БЫЛО ДУБЛЕЙ)
          if (newMsg.sender_id === currentUser.id) return;
 
+         // 2. ОБРАБАТЫВАЕМ ТОЛЬКО ВХОДЯЩИЕ
          if (newMsg.receiver_id === currentUser.id) {
             const partnerId = newMsg.sender_id;
             
@@ -354,6 +296,7 @@ const App: React.FC = () => {
             setChatSessions(prev => {
                 const existing = prev.find(s => s.id === partnerId);
                 if (existing) {
+                    // Проверка на дубликаты (на всякий случай)
                     if (existing.messages.some(m => m.timestamp === messageObj.timestamp)) {
                         return prev;
                     }
@@ -518,90 +461,58 @@ const App: React.FC = () => {
       setView('chat');
   };
 
-  const handleJoinEvent = async (eventId: string) => {
+  const handleJoinEvent = (eventId: string) => {
     const targetEvent = events.find(e => e.id === eventId);
     if (!targetEvent) return;
-
     const isAlreadyJoined = targetEvent.participantsIds.includes(currentUser.id);
-
-    // ВАРИАНТ 1: Мы уже участники -> Просто открываем чат
-    if (isAlreadyJoined) {
-        const existingSession = chatSessions.find(s => s.id === eventId);
-        if (!existingSession) {
-             setChatSessions(prev => [{
-                 id: eventId,
-                 type: 'event',
-                 eventId: eventId,
-                 messages: [],
-                 unread: 0
-             }, ...prev]);
-        }
-        setActiveSessionId(eventId);
-        setView('chat');
-        return; 
-    }
-
-    // ВАРИАНТ 2: Мы НЕ участники -> Вступаем через Базу
-    const newParticipants = [...targetEvent.participantsIds, currentUser.id];
-
-    // 1. Оптимистичное обновление интерфейса
     setEvents(prev => prev.map(event => {
         if (event.id === eventId) {
-            return { ...event, participantsIds: newParticipants };
+            if (isAlreadyJoined) {
+                return { ...event, participantsIds: event.participantsIds.filter(id => id !== currentUser.id) };
+            } else {
+                return { ...event, participantsIds: [...event.participantsIds, currentUser.id] };
+            }
         }
         return event;
     }));
-
-    // 2. Отправка в Supabase
-    try {
-        const { error } = await supabase
-            .from('events')
-            .update({ participants_ids: newParticipants })
-            .eq('id', eventId);
-        
-        if (error) throw error;
-
-        // 3. Создаем сессию чата и переходим
-        setChatSessions(prev => [{
-             id: eventId,
-             type: 'event',
-             eventId: eventId,
-             messages: [],
-             unread: 0
-        }, ...prev]);
-        
+    if (!isAlreadyJoined) {
+        const existingSession = chatSessions.find(s => s.id === eventId);
+        if (!existingSession) {
+            setChatSessions(prev => [{
+                id: eventId,
+                type: 'event',
+                eventId: eventId,
+                messages: [],
+                unread: 0
+            }, ...prev]);
+        }
         setActiveSessionId(eventId);
         setView('chat');
-
-    } catch (error) {
-        console.error("Ошибка вступления:", error);
-        alert("Не удалось вступить в событие");
-        fetchEvents();
     }
   };
 
-  const handleCreateEvent = async (data: Partial<Event>) => {
-      try {
-          const { error } = await supabase.from('events').insert([{
-              title: data.title,
-              description: data.description || '',
-              date: data.date,
-              location_name: data.locationName,
-              tags: data.tags ? data.tags.join(',') : '',
-              organizer_id: currentUser.id,
-              participants_ids: [currentUser.id]
-          }]);
-
-          if (error) throw error;
-
-          fetchEvents();
-          setActiveSessionId(null); 
-          setView('events');
-
-      } catch (error: any) {
-          console.error("Ошибка создания:", error);
-          alert("Не удалось создать событие: " + error.message);
-      }
+  const handleCreateEvent = (data: Partial<Event>) => {
+      const newEventId = Date.now().toString();
+      const newEvent: Event = {
+          id: newEventId,
+          title: data.title || 'Новое событие',
+          description: data.description || '',
+          date: data.date || new Date().toISOString(),
+          locationName: data.locationName || 'Не указано',
+          organizerId: currentUser.id,
+          participantsIds: [currentUser.id],
+          tags: data.tags || []
+      };
+      setEvents(prev => [newEvent, ...prev]);
+      setChatSessions(prev => [{
+          id: newEventId,
+          type: 'event',
+          eventId: newEventId,
+          messages: [],
+          unread: 0
+      }, ...prev]);
+      setActiveSessionId(newEventId);
+      setView('chat');
   };
 
   const handleUpdateProfile = (updatedUser: User) => {
@@ -622,14 +533,11 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
-  
-  // ИСПРАВЛЕНИЕ: ЭКРАН ЗАГРУЗКИ (РУКОПОЖАТИЕ 🤝)
   if (isLoading) {
     return (
       <div className="max-w-md mx-auto h-[100dvh] bg-white flex flex-col items-center justify-center">
-         <div className="flex items-center justify-center mb-6 animate-bounce">
-            {/* Твой эмодзи рукопожатия */}
-            <span className="text-7xl">🤝</span>
+         <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-indigo-600 to-pink-500 rounded-3xl shadow-xl mb-6 animate-pulse">
+            <Heart className="text-white fill-white" size={40} />
          </div>
          <Loader2 className="animate-spin text-indigo-600" size={32} />
       </div>
@@ -671,9 +579,6 @@ const App: React.FC = () => {
                   user={visibleUsers[0]} 
                   currentUser={currentUser}
                   distance={visibleUsers[0].distance || 0} 
-                  // ВОТ ЭТУ СТРОЧКУ НУЖНО ДОБАВИТЬ:
-                  isOnline={onlineUsers.has(visibleUsers[0].id)}
-                  
                   onInfoClick={() => openProfile(visibleUsers[0])}
                 />
               ) : (
@@ -720,35 +625,12 @@ const App: React.FC = () => {
         )}
 
         {view === 'chat' && !activeSessionId && (
-          <ChatList 
-            sessions={chatSessions} 
-            users={users} 
-            events={events}
-            onSelectChat={setActiveSessionId}
-            onlineUsers={onlineUsers} 
-          />
+          <ChatList sessions={chatSessions} users={users} events={events} onSelectChat={setActiveSessionId} />
         )}
 
         {view === 'chat' && activeSessionId && (
           <div className="absolute inset-0 z-30 bg-white">
-            {/* VIEW: ACTIVE CHAT */}
-        {view === 'chat' && activeSessionId && (
-          <div className="absolute inset-0 z-30 bg-white">
-            <ChatWindow 
-              currentUser={currentUser}
-              session={activeSession}
-              partner={activePartner}
-              event={activeEvent}
-              isTyping={typingChatId === activeSessionId}
-              isOnline={activePartner ? onlineUsers.has(activePartner.id) : false}
-              onBack={() => setActiveSessionId(null)}
-              onSendMessage={handleSendMessage}
-              
-              // ---> ДОБАВЛЕНА ЭТА СТРОЧКА:
-              onProfileClick={() => activePartner && openProfile(activePartner)}
-            />
-          </div>
-        )}
+            <ChatWindow currentUser={currentUser} session={activeSession} partner={activePartner} event={activeEvent} isTyping={typingChatId === activeSessionId} onBack={() => setActiveSessionId(null)} onSendMessage={handleSendMessage} />
           </div>
         )}
 
