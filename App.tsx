@@ -731,7 +731,7 @@ const App: React.FC = () => {
 
         {view === 'chat' && activeSessionId && (
           <div className="absolute inset-0 z-30 bg-white">
-            <ChatWindow currentUser={currentUser} session={activeSession} partner={activePartner} event={activeEvent} isTyping={typingChatId === activeSessionId} onBack={() => setActiveSessionId(null)} onSendMessage={handleSendMessage} />
+            <ChatWindow currentUser={currentUser} session={activeSession} partner={activePartner} event={activeEvent} isTyping={typingChatId === activeSessionId} isOnline={activePartner ? onlineUsers.has(activePartner.id) : false} onBack={() => setActiveSessionId(null)} onSendMessage={handleSendMessage} />
           </div>
         )}
 
