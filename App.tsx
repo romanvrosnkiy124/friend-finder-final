@@ -671,6 +671,9 @@ const App: React.FC = () => {
                   user={visibleUsers[0]} 
                   currentUser={currentUser}
                   distance={visibleUsers[0].distance || 0} 
+                  // ВОТ ЭТУ СТРОЧКУ НУЖНО ДОБАВИТЬ:
+                  isOnline={onlineUsers.has(visibleUsers[0].id)}
+                  
                   onInfoClick={() => openProfile(visibleUsers[0])}
                 />
               ) : (
