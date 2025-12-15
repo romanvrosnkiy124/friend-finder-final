@@ -9,7 +9,6 @@ import {
 import { 
   MOCK_USERS, 
   MOCK_CHATS_INITIAL, 
-  MOCK_EVENTS,
   MOCK_INCOMING_LIKES,
   MOCK_CENTER_LAT,
   MOCK_CENTER_LNG
@@ -46,7 +45,6 @@ import { LikesList } from './components/LikesList';
 import { generateCelebrityReply } from './services/geminiService';
 import { supabase } from './supabaseClient';
 
-// Helper to calculate distance in km
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -65,9 +63,6 @@ function deg2rad(deg: number) {
 }
 
 const App: React.FC = () => {
-  // ==========================================
-  // 1. СОСТОЯНИЯ (STATE)
-  // ==========================================
   const [view, setView] = useState<AppView>('register');
   const [isLoading, setIsLoading] = useState(true);
   
@@ -82,11 +77,14 @@ const App: React.FC = () => {
     location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG },
   });
 
-  const [users, setUsers] = useState<User[]>([]);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [users, setUsers] = useState<User[]>(MOCK_USERS);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(MOCK_CHATS_INITIAL);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
-  const [incomingLikes, setIncomingLikes] = useState<string[]>([]); // Пустой массив (нет фейковых лайков)
+  
+  // ИЗМЕНЕНИЕ: Список событий теперь пустой по умолчанию
+  const [events, setEvents] = useState<Event[]>([]);
+  
+  const [incomingLikes, setIncomingLikes] = useState<string[]>([]);
   
   const [filters, setFilters] = useState<FilterState>({
     ageRange: [18, 99],
@@ -105,11 +103,8 @@ const App: React.FC = () => {
   const [inspectingUser, setInspectingUser] = useState<User | null>(null);
   const [matchModalUser, setMatchModalUser] = useState<User | null>(null);
 
-  // ==========================================
-  // 2. ФУНКЦИИ (LOGIC)
-  // ==========================================
+  // --- ФУНКЦИИ ---
 
- // --- Функция загрузки анкеты из базы ---
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -126,15 +121,16 @@ const App: React.FC = () => {
           gender: 'male',
           photoUrl: data.avatar_url || '', 
           bio: data.bio || '', 
-          city: data.city || '', // <--- ИСПРАВЛЕНИЕ 1: Теперь мы читаем город из базы
+          city: data.city || '', 
           interests: data.interests ? data.interests.split(',') : [],
-          location: { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
+          location: (data.latitude && data.longitude) 
+            ? { lat: data.latitude, lng: data.longitude } 
+            : { lat: MOCK_CENTER_LAT, lng: MOCK_CENTER_LNG }, 
         });
-        
-        // ИСПРАВЛЕНИЕ 2: Меняем стартовый экран на КАРТУ
-        setView('map'); 
-        
+        setView('map');
         updateUserLocation();
+        // Когда вошли - загружаем события
+        fetchEvents();
       }
     } catch (error) {
       console.error('Ошибка загрузки профиля:', error);
@@ -145,33 +141,18 @@ const App: React.FC = () => {
 
   const updateUserLocation = () => {
     if (!navigator.geolocation) return;
-
     navigator.geolocation.getCurrentPosition(async (position) => {
       const { latitude, longitude } = position.coords;
-      
-      setCurrentUser(prev => ({
-        ...prev,
-        location: { lat: latitude, lng: longitude }
-      }));
-
+      setCurrentUser(prev => ({ ...prev, location: { lat: latitude, lng: longitude } }));
       if (currentUser.id !== 'me') {
-        await supabase
-          .from('profiles')
-          .update({ latitude: latitude, longitude: longitude })
-          .eq('id', currentUser.id);
+        await supabase.from('profiles').update({ latitude: latitude, longitude: longitude }).eq('id', currentUser.id);
       }
-    }, (error) => {
-      console.error("Ошибка GPS:", error);
-    });
+    }, (error) => { console.error("Ошибка GPS:", error); });
   };
 
   const fetchRealUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .neq('id', currentUser.id); 
-
+      const { data, error } = await supabase.from('profiles').select('*').neq('id', currentUser.id); 
       if (data && data.length > 0) {
         const realUsers: User[] = data.map(u => ({
           id: u.id,
@@ -190,16 +171,34 @@ const App: React.FC = () => {
       } else {
         setUsers([]); 
       }
+    } catch (error) { console.error('Ошибка загрузки людей:', error); }
+  };
+
+  // --- НОВАЯ ФУНКЦИЯ: ЗАГРУЗКА СОБЫТИЙ ---
+  const fetchEvents = async () => {
+    try {
+      const { data, error } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      
+      if (data) {
+        const loadedEvents: Event[] = data.map(e => ({
+          id: e.id.toString(),
+          title: e.title,
+          description: e.description,
+          date: e.date,
+          locationName: e.location_name,
+          organizerId: e.organizer_id,
+          participantsIds: e.participants_ids || [],
+          tags: e.tags ? e.tags.split(',') : []
+        }));
+        setEvents(loadedEvents);
+      }
     } catch (error) {
-      console.error('Ошибка загрузки людей:', error);
+      console.error("Ошибка загрузки событий:", error);
     }
   };
 
-  // ==========================================
-  // 3. ЭФФЕКТЫ (EFFECTS)
-  // ==========================================
+  // --- ЭФФЕКТЫ ---
 
-  // --- Эффект 1: Проверка входа ---
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -211,9 +210,7 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        if (currentUser.id === 'me') { 
-             fetchUserProfile(session.user.id);
-        }
+        if (currentUser.id === 'me') { fetchUserProfile(session.user.id); }
       } else {
         setView('register');
         setCurrentUser(prev => ({ ...prev, id: 'me' }));
@@ -223,14 +220,13 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- Эффект 2: Загрузка людей ---
   useEffect(() => {
     if (currentUser.id !== 'me') {
       fetchRealUsers();
     }
   }, [currentUser.id]); 
 
-  // --- Эффект 3: ЧАТ ---
+  // ЧАТ
   useEffect(() => {
     if (currentUser.id === 'me') return;
 
@@ -243,16 +239,13 @@ const App: React.FC = () => {
 
       if (data) {
         const newSessions: ChatSession[] = [];
-        
         data.forEach(msg => {
           const partnerId = msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id;
-          
           let session = newSessions.find(s => s.id === partnerId);
           if (!session) {
             session = { id: partnerId, type: 'direct', messages: [], unread: 0 };
             newSessions.push(session);
           }
-          
           session.messages.push({
             id: msg.id.toString(),
             senderId: msg.sender_id,
@@ -261,7 +254,6 @@ const App: React.FC = () => {
             timestamp: new Date(msg.created_at).getTime()
           });
         });
-        
         if (newSessions.length > 0) {
             setChatSessions(prev => {
                 const combined = [...prev.filter(s => !newSessions.find(ns => ns.id === s.id)), ...newSessions];
@@ -277,14 +269,10 @@ const App: React.FC = () => {
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
          const newMsg = payload.new;
-         
-         // 1. ИГНОРИРУЕМ СВОИ ЖЕ СООБЩЕНИЯ (ЧТОБЫ НЕ БЫЛО ДУБЛЕЙ)
          if (newMsg.sender_id === currentUser.id) return;
 
-         // 2. ОБРАБАТЫВАЕМ ТОЛЬКО ВХОДЯЩИЕ
          if (newMsg.receiver_id === currentUser.id) {
             const partnerId = newMsg.sender_id;
-            
             const messageObj = {
                 id: newMsg.id.toString(),
                 senderId: newMsg.sender_id,
@@ -296,7 +284,6 @@ const App: React.FC = () => {
             setChatSessions(prev => {
                 const existing = prev.find(s => s.id === partnerId);
                 if (existing) {
-                    // Проверка на дубликаты (на всякий случай)
                     if (existing.messages.some(m => m.timestamp === messageObj.timestamp)) {
                         return prev;
                     }
@@ -324,9 +311,7 @@ const App: React.FC = () => {
   }, [currentUser.id, activeSessionId]);
 
 
-  // ==========================================
-  // 4. ОСТАЛЬНАЯ ЛОГИКА
-  // ==========================================
+  // --- ЛОГИКА ---
 
   const visibleUsers = useMemo(() => {
     return users.map(user => ({
@@ -342,7 +327,6 @@ const App: React.FC = () => {
       if (filters.radius < 100 && (user.distance || 0) > filters.radius) return false;
       if (filters.gender !== 'all' && user.gender !== filters.gender) return false;
       if (user.age < filters.ageRange[0] || user.age > filters.ageRange[1]) return false;
-      
       if (filters.interests.length > 0) {
         const hasCommon = user.interests.some(i => filters.interests.includes(i));
         if (!hasCommon) return false;
@@ -376,10 +360,8 @@ const App: React.FC = () => {
   const handleSwipe = (direction: 'left' | 'right') => {
     setAnimatingButton(direction);
     setTimeout(() => setAnimatingButton(null), 300);
-
     if (visibleUsers.length === 0) return;
     const userToSwipe = visibleUsers[0];
-    
     if (direction === 'right') {
         processLike(userToSwipe);
     } else {
@@ -394,7 +376,6 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!activeSessionId) return;
-
     const optimisticMessage = {
       id: Date.now().toString(),
       senderId: currentUser.id,
@@ -402,33 +383,20 @@ const App: React.FC = () => {
       text,
       timestamp: Date.now()
     };
-
     setChatSessions(prev => prev.map(session => {
       if (session.id === activeSessionId) {
-        return {
-          ...session,
-          messages: [...session.messages, optimisticMessage]
-        };
+        return { ...session, messages: [...session.messages, optimisticMessage] };
       }
       return session;
     }));
-
     try {
-      const { error } = await supabase
-        .from('messages')
-        .insert([
-          {
+      const { error } = await supabase.from('messages').insert([{
             sender_id: currentUser.id,
             receiver_id: activeSessionId,
             text: text
-          }
-        ]);
-        
+          }]);
       if (error) console.error('Ошибка отправки:', error);
-
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const openProfile = async (user: User) => {
@@ -461,58 +429,84 @@ const App: React.FC = () => {
       setView('chat');
   };
 
-  const handleJoinEvent = (eventId: string) => {
+  // --- ИЗМЕНЕННАЯ ФУНКЦИЯ: ВСТУПИТЬ В СОБЫТИЕ ---
+  const handleJoinEvent = async (eventId: string) => {
     const targetEvent = events.find(e => e.id === eventId);
     if (!targetEvent) return;
+
     const isAlreadyJoined = targetEvent.participantsIds.includes(currentUser.id);
+    let newParticipants = [...targetEvent.participantsIds];
+
+    if (isAlreadyJoined) {
+        newParticipants = newParticipants.filter(id => id !== currentUser.id);
+    } else {
+        newParticipants.push(currentUser.id);
+    }
+
+    // 1. Оптимистичное обновление
     setEvents(prev => prev.map(event => {
         if (event.id === eventId) {
-            if (isAlreadyJoined) {
-                return { ...event, participantsIds: event.participantsIds.filter(id => id !== currentUser.id) };
-            } else {
-                return { ...event, participantsIds: [...event.participantsIds, currentUser.id] };
-            }
+            return { ...event, participantsIds: newParticipants };
         }
         return event;
     }));
-    if (!isAlreadyJoined) {
-        const existingSession = chatSessions.find(s => s.id === eventId);
-        if (!existingSession) {
-            setChatSessions(prev => [{
-                id: eventId,
-                type: 'event',
-                eventId: eventId,
-                messages: [],
-                unread: 0
-            }, ...prev]);
+
+    // 2. Отправка в Supabase
+    try {
+        const { error } = await supabase
+            .from('events')
+            .update({ participants_ids: newParticipants })
+            .eq('id', eventId);
+        
+        if (error) throw error;
+
+        // Если вступили - открываем чат (опционально)
+        if (!isAlreadyJoined) {
+             const existingSession = chatSessions.find(s => s.id === eventId);
+             if (!existingSession) {
+                 setChatSessions(prev => [{
+                     id: eventId,
+                     type: 'event',
+                     eventId: eventId,
+                     messages: [],
+                     unread: 0
+                 }, ...prev]);
+             }
+             setActiveSessionId(eventId);
+             setView('chat');
         }
-        setActiveSessionId(eventId);
-        setView('chat');
+
+    } catch (error) {
+        console.error("Ошибка вступления:", error);
+        alert("Не удалось вступить в событие");
+        // Откат изменений (можно добавить)
     }
   };
 
-  const handleCreateEvent = (data: Partial<Event>) => {
-      const newEventId = Date.now().toString();
-      const newEvent: Event = {
-          id: newEventId,
-          title: data.title || 'Новое событие',
-          description: data.description || '',
-          date: data.date || new Date().toISOString(),
-          locationName: data.locationName || 'Не указано',
-          organizerId: currentUser.id,
-          participantsIds: [currentUser.id],
-          tags: data.tags || []
-      };
-      setEvents(prev => [newEvent, ...prev]);
-      setChatSessions(prev => [{
-          id: newEventId,
-          type: 'event',
-          eventId: newEventId,
-          messages: [],
-          unread: 0
-      }, ...prev]);
-      setActiveSessionId(newEventId);
-      setView('chat');
+  // --- ИЗМЕНЕННАЯ ФУНКЦИЯ: СОЗДАНИЕ СОБЫТИЯ ---
+  const handleCreateEvent = async (data: Partial<Event>) => {
+      try {
+          const { error } = await supabase.from('events').insert([{
+              title: data.title,
+              description: data.description || '',
+              date: data.date,
+              location_name: data.locationName,
+              tags: data.tags ? data.tags.join(',') : '',
+              organizer_id: currentUser.id,
+              participants_ids: [currentUser.id]
+          }]);
+
+          if (error) throw error;
+
+          // Обновляем список событий
+          fetchEvents();
+          setActiveSessionId(null); // Сброс
+          setView('events'); // Переход к списку
+
+      } catch (error: any) {
+          console.error("Ошибка создания:", error);
+          alert("Не удалось создать событие: " + error.message);
+      }
   };
 
   const handleUpdateProfile = (updatedUser: User) => {
@@ -695,8 +689,6 @@ const App: React.FC = () => {
 
       {/* Bottom Navigation */}
       <div className="bg-white border-t border-gray-200 h-16 px-2 pb-1 flex items-center justify-between shrink-0 z-20 relative">
-         
-         {/* 1. КАРТА (Теперь первая) */}
          <button 
            onClick={() => setView('map')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'map' ? 'text-indigo-600' : 'text-gray-400'}`}
@@ -705,7 +697,6 @@ const App: React.FC = () => {
            <span className="text-[10px] font-medium">Карта</span>
          </button>
 
-         {/* 2. ПОИСК (Теперь второй) */}
          <button 
            onClick={() => setView('swipe')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'swipe' ? 'text-indigo-600' : 'text-gray-400'}`}
@@ -714,7 +705,6 @@ const App: React.FC = () => {
            <span className="text-[10px] font-medium">Поиск</span>
          </button>
 
-         {/* 3. СОБЫТИЯ */}
          <button 
            onClick={() => setView('events')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'events' ? 'text-indigo-600' : 'text-gray-400'}`}
@@ -723,7 +713,6 @@ const App: React.FC = () => {
            <span className="text-[10px] font-medium">События</span>
          </button>
 
-         {/* 4. ЛАЙКИ */}
          <button 
            onClick={() => setView('likes')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'likes' ? 'text-indigo-600' : 'text-gray-400'}`}
@@ -737,7 +726,6 @@ const App: React.FC = () => {
            <span className="text-[10px] font-medium">Лайки</span>
          </button>
 
-         {/* 5. ЧАТЫ */}
          <button 
            onClick={() => setView('chat')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'chat' ? 'text-indigo-600' : 'text-gray-400'}`}
@@ -751,7 +739,6 @@ const App: React.FC = () => {
            <span className="text-[10px] font-medium">Чаты</span>
          </button>
 
-         {/* 6. ПРОФИЛЬ */}
          <button 
            onClick={() => setView('profile')}
            className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'profile' ? 'text-indigo-600' : 'text-gray-400'}`}
