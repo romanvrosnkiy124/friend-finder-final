@@ -429,21 +429,36 @@ const App: React.FC = () => {
       setView('chat');
   };
 
-  // --- ИЗМЕНЕННАЯ ФУНКЦИЯ: ВСТУПИТЬ В СОБЫТИЕ ---
+  // --- ОБНОВЛЕННАЯ ФУНКЦИЯ: ВСТУПИТЬ И ОТКРЫТЬ ЧАТ ---
   const handleJoinEvent = async (eventId: string) => {
     const targetEvent = events.find(e => e.id === eventId);
     if (!targetEvent) return;
 
     const isAlreadyJoined = targetEvent.participantsIds.includes(currentUser.id);
-    let newParticipants = [...targetEvent.participantsIds];
 
+    // ВАРИАНТ 1: Мы уже участники -> Просто открываем чат
     if (isAlreadyJoined) {
-        newParticipants = newParticipants.filter(id => id !== currentUser.id);
-    } else {
-        newParticipants.push(currentUser.id);
+        // Проверяем, есть ли сессия чата, если нет - создаем
+        const existingSession = chatSessions.find(s => s.id === eventId);
+        if (!existingSession) {
+             setChatSessions(prev => [{
+                 id: eventId,
+                 type: 'event',
+                 eventId: eventId,
+                 messages: [],
+                 unread: 0
+             }, ...prev]);
+        }
+        // Переходим в чат
+        setActiveSessionId(eventId);
+        setView('chat');
+        return; // Выходим, в базу писать не надо
     }
 
-    // 1. Оптимистичное обновление
+    // ВАРИАНТ 2: Мы НЕ участники -> Вступаем через Базу
+    const newParticipants = [...targetEvent.participantsIds, currentUser.id];
+
+    // 1. Оптимистичное обновление интерфейса
     setEvents(prev => prev.map(event => {
         if (event.id === eventId) {
             return { ...event, participantsIds: newParticipants };
@@ -460,26 +475,23 @@ const App: React.FC = () => {
         
         if (error) throw error;
 
-        // Если вступили - открываем чат (опционально)
-        if (!isAlreadyJoined) {
-             const existingSession = chatSessions.find(s => s.id === eventId);
-             if (!existingSession) {
-                 setChatSessions(prev => [{
-                     id: eventId,
-                     type: 'event',
-                     eventId: eventId,
-                     messages: [],
-                     unread: 0
-                 }, ...prev]);
-             }
-             setActiveSessionId(eventId);
-             setView('chat');
-        }
+        // 3. Создаем сессию чата и переходим
+        setChatSessions(prev => [{
+             id: eventId,
+             type: 'event',
+             eventId: eventId,
+             messages: [],
+             unread: 0
+        }, ...prev]);
+        
+        setActiveSessionId(eventId);
+        setView('chat');
 
     } catch (error) {
         console.error("Ошибка вступления:", error);
         alert("Не удалось вступить в событие");
-        // Откат изменений (можно добавить)
+        // Откатываем оптимистичное обновление (перезагружаем события)
+        fetchEvents();
     }
   };
 
