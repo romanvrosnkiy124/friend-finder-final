@@ -1,234 +1,144 @@
-
 import React, { useState } from 'react';
-import { Interest } from '../types';
+import { Event } from '../types';
+import { X, MapPin } from 'lucide-react'; // Добавили MapPin
 import { Button } from './Button';
-import { X, Calendar, MapPin, Type, Plus, Loader2, AlertCircle } from 'lucide-react';
-import { validateInterestSafety } from '../services/geminiService';
+import { CityAutocomplete } from './CityAutocomplete'; // Импортировали наш компонент
 
 interface CreateEventModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (event: Partial<Event>) => void;
 }
 
 export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Partial<Event>>({
     title: '',
     description: '',
     date: '',
-    time: '',
     locationName: '',
-    tags: [] as string[],
+    tags: []
   });
   
-  // Custom Tag State
-  const [customTag, setCustomTag] = useState('');
-  const [isValidatingTag, setIsValidatingTag] = useState(false);
-  const [tagError, setTagError] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState('');
 
   if (!isOpen) return null;
 
-  const toggleTag = (tag: string) => {
-    if (formData.tags.includes(tag)) {
-      setFormData({ ...formData, tags: formData.tags.filter(t => t !== tag) });
-    } else {
-      setFormData({ ...formData, tags: [...formData.tags, tag] });
+  const handleSubmit = () => {
+    if (!formData.title || !formData.date || !formData.locationName) {
+        alert('Заполните обязательные поля');
+        return;
     }
-  };
-
-  const handleAddCustomTag = async () => {
-    const normalized = customTag.trim();
-    if (!normalized) return;
-    
-    if (formData.tags.includes(normalized)) {
-        setCustomTag('');
-        return; // Already exists
-    }
-
-    setIsValidatingTag(true);
-    setTagError(null);
-
-    const isSafe = await validateInterestSafety(normalized);
-
-    setIsValidatingTag(false);
-
-    if (isSafe) {
-        toggleTag(normalized);
-        setCustomTag('');
-    } else {
-        setTagError("Недопустимый тег.");
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title || !formData.date || !formData.time || !formData.locationName) {
-      alert('Пожалуйста, заполните обязательные поля');
-      return;
-    }
-    
-    // Combine date and time
-    const dateTime = new Date(`${formData.date}T${formData.time}`).toISOString();
-    
-    onSubmit({
-      title: formData.title,
-      description: formData.description,
-      date: dateTime,
-      locationName: formData.locationName,
-      tags: formData.tags
-    });
-    
+    onSubmit(formData);
+    setFormData({ title: '', description: '', date: '', locationName: '', tags: [] });
     onClose();
   };
 
+  const addTag = () => {
+      if (tagInput.trim()) {
+          setFormData(prev => ({
+              ...prev,
+              tags: [...(prev.tags || []), tagInput.trim()]
+          }));
+          setTagInput('');
+      }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">Создать событие</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
-              <X size={24} />
-            </button>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <h2 className="text-lg font-bold text-gray-800">Создать событие</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+            <X size={20} className="text-gray-500" />
+          </button>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {/* Title */}
+        <div className="p-6 space-y-4 overflow-y-auto">
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Название события</label>
-                <div className="relative">
-                    <Type className="absolute left-3 top-3 text-gray-400" size={18} />
-                    <input 
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) => setFormData({...formData, title: e.target.value})}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Например: Пробежка в парке"
-                        required
-                    />
-                </div>
-            </div>
-
-            {/* Date & Time */}
-            <div className="flex gap-4">
-                <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата</label>
-                    <div className="relative">
-                        <input 
-                            type="date"
-                            value={formData.date}
-                            onChange={(e) => setFormData({...formData, date: e.target.value})}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            required
-                        />
-                    </div>
-                </div>
-                <div className="w-1/3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Время</label>
-                    <input 
-                        type="time"
-                        value={formData.time}
-                        onChange={(e) => setFormData({...formData, time: e.target.value})}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        required
-                    />
-                </div>
-            </div>
-
-            {/* Location */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Место встречи</label>
-                <div className="relative">
-                    <MapPin className="absolute left-3 top-3 text-gray-400" size={18} />
-                    <input 
-                        type="text"
-                        value={formData.locationName}
-                        onChange={(e) => setFormData({...formData, locationName: e.target.value})}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Адрес или название места"
-                        required
-                    />
-                </div>
-            </div>
-
-            {/* Description */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
-                <textarea 
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px]"
-                    placeholder="Подробности для участников..."
+                <label className="block text-sm font-medium text-gray-700 mb-1">Название</label>
+                <input 
+                    type="text" 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Например: Поход в кино"
+                    value={formData.title}
+                    onChange={e => setFormData({...formData, title: e.target.value})}
                 />
             </div>
 
-            {/* Interests */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Категории интересов</label>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto mb-2">
-                    {Object.values(Interest).map((interest) => (
-                        <button
-                            key={interest}
-                            type="button"
-                            onClick={() => toggleTag(interest)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                                formData.tags.includes(interest)
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                        >
-                            {interest}
-                        </button>
-                    ))}
-                    {formData.tags
-                        .filter(t => !Object.values(Interest).includes(t as Interest))
-                        .map(tag => (
-                        <button
-                            key={tag}
-                            type="button"
-                            onClick={() => toggleTag(tag)}
-                            className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors bg-indigo-600 text-white"
-                        >
-                            {tag}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Add Custom Tag */}
-                <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Дата</label>
                     <input 
-                        type="text"
-                        value={customTag}
-                        onChange={(e) => {
-                            setCustomTag(e.target.value);
-                            setTagError(null);
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustomTag())}
-                        className="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                        placeholder="Свой тег"
+                        type="date" 
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500"
+                        value={formData.date?.split('T')[0]}
+                        onChange={e => setFormData({...formData, date: e.target.value})}
                     />
-                    <button 
-                        type="button"
-                        onClick={handleAddCustomTag}
-                        disabled={!customTag.trim() || isValidatingTag}
-                        className="bg-gray-900 text-white px-3 rounded-xl hover:bg-black transition-colors disabled:opacity-50 flex items-center justify-center min-w-[3rem]"
-                    >
-                        {isValidatingTag ? <Loader2 size={18} className="animate-spin" /> : <Plus size={20} />}
-                    </button>
                 </div>
-                {tagError && (
-                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                        <AlertCircle size={12} /> {tagError}
-                    </p>
-                )}
+                <div>
+                    {/* Время можно добавить отдельно, если нужно */}
+                </div>
             </div>
 
-            <Button fullWidth type="submit" className="mt-4">
-              Создать событие
-            </Button>
-          </form>
+            {/* ЗАМЕНА: УМНЫЙ ВЫБОР АДРЕСА */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Где встречаемся?</label>
+                <div className="relative">
+                    <CityAutocomplete 
+                        value={formData.locationName || ''}
+                        onChange={(val) => setFormData({...formData, locationName: val})}
+                        placeholder="Введите адрес или место"
+                        isValid={true} // Всегда валидно, так как пока не требуем координат
+                    />
+                    <div className="absolute right-3 top-3 text-gray-400 pointer-events-none">
+                        <MapPin size={18} />
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
+                <textarea 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px]"
+                    placeholder="Подробности события..."
+                    value={formData.description}
+                    onChange={e => setFormData({...formData, description: e.target.value})}
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Теги</label>
+                <div className="flex gap-2 mb-2 flex-wrap">
+                    {formData.tags?.map((tag, i) => (
+                        <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg text-xs flex items-center gap-1">
+                            #{tag}
+                            <button onClick={() => setFormData(prev => ({...prev, tags: prev.tags?.filter((_, idx) => idx !== i)}))}>
+                                <X size={12} />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Добавить тег"
+                        value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && addTag()}
+                    />
+                    <button onClick={addTag} className="bg-gray-200 text-gray-600 px-3 rounded-xl hover:bg-gray-300">+</button>
+                </div>
+            </div>
         </div>
+
+        <div className="p-4 border-t bg-gray-50">
+            <Button fullWidth onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-700">
+                Создать событие
+            </Button>
+        </div>
+
       </div>
     </div>
   );
