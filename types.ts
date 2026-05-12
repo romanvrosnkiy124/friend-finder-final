@@ -82,4 +82,4 @@ export interface FilterState {
   radius: number; // Search radius in km
 }
 
-export type AppView = 'swipe' | 'map' | 'chat' | 'profile' | 'events' | 'register' | 'likes';
+export type AppView = 'swipe' | 'map' | 'chat' | 'profile' | 'events' | 'register' | 'likes' | 'crm';

@@ -43,6 +43,7 @@ import { EditProfileModal } from './components/EditProfileModal';
 import { MatchModal } from './components/MatchModal';
 import { RegistrationForm } from './components/RegistrationForm';
 import { LikesList } from './components/LikesList';
+import { CrmBoard } from './components/CrmBoard';
 import { generateCelebrityReply } from './services/geminiService';
 import { supabase } from './supabaseClient';
 
@@ -534,6 +535,12 @@ const App: React.FC = () => {
             </div>
         )}
 
+        {view === 'crm' && (
+            <div className="w-full h-full overflow-y-auto bg-slate-100">
+                <CrmBoard />
+            </div>
+        )}
+
         {view === 'chat' && !activeSessionId && (
           <ChatList sessions={chatSessions} users={users} events={events} onSelectChat={setActiveSessionId} onlineUsers={onlineUsers} />
         )}
@@ -615,6 +622,7 @@ const App: React.FC = () => {
          <button onClick={() => setView('map')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'map' ? 'text-indigo-600' : 'text-gray-400'}`}> <Map size={22} /> <span className="text-[10px] font-medium">Карта</span> </button>
          <button onClick={() => setView('swipe')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'swipe' ? 'text-indigo-600' : 'text-gray-400'}`}> <Search size={22} /> <span className="text-[10px] font-medium">Поиск</span> </button>
          <button onClick={() => setView('events')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'events' ? 'text-indigo-600' : 'text-gray-400'}`}> <Calendar size={22} /> <span className="text-[10px] font-medium">События</span> </button>
+         <button onClick={() => setView('crm')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'crm' ? 'text-indigo-600' : 'text-gray-400'}`}> <Globe size={22} /> <span className="text-[10px] font-medium">CRM</span> </button>
          <button onClick={() => setView('likes')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'likes' ? 'text-indigo-600' : 'text-gray-400'}`}> <div className="relative"> <Heart size={22} className={view === 'likes' ? 'fill-current' : ''} /> {incomingLikes.length > 0 && ( <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full border-2 border-white"></span> )} </div> <span className="text-[10px] font-medium">Лайки</span> </button>
          <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'chat' ? 'text-indigo-600' : 'text-gray-400'}`}> <div className="relative"> <MessageCircle size={22} /> {chatSessions.reduce((acc, s) => acc + s.unread, 0) > 0 && ( <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span> )} </div> <span className="text-[10px] font-medium">Чаты</span> </button>
          <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-0.5 flex-1 transition-colors ${view === 'profile' ? 'text-indigo-600' : 'text-gray-400'}`}> <UserIcon size={22} /> <span className="text-[10px] font-medium">Профиль</span> </button>
